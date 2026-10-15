@@ -1,0 +1,4 @@
+# FeimAI core dependencies.
+ollama
+PyQt6
+requests

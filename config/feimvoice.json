@@ -1,0 +1,34 @@
+{
+  "enabled": true,
+  "stt": {
+    "engine": "google",
+    "language": "th-TH",
+    "timeout": 5,
+    "phrase_time_limit": 10,
+    "ambient_noise_duration": 0.5,
+    "pause_threshold": 0.8
+  },
+  "tts": {
+    "enabled": true,
+    "engine": "pythaitts",
+    "voice_id": "",
+    "rate": 170,
+    "volume": 0.7,
+    "pitch": -4,
+    "thai_model": "vachana",
+    "thai_speaker": "th_f_1",
+    "thai_rate": 1.0,
+    "thai_pitch": 0.0,
+    "thai_volume_db": 0.0
+  },
+  "wake": {
+    "enabled": true,
+    "words": [
+      "คอมพิวเตอร์"
+    ],
+    "response": "มีอะไรให้ช่วยไหม",
+    "command_timeout": 3,
+    "phrase_time_limit": 3,
+    "delay": 0.2
+  }
+}

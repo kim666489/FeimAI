@@ -1,0 +1,6 @@
+# Optional FeimVoice dependencies; install separately from FeimAI core.
+SpeechRecognition
+PyAudio
+pyttsx3
+PyThaiTTS
+pydub

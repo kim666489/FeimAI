@@ -1,0 +1,85 @@
+{
+    "debug": true,
+    "serverURL": "http://192.168.1.140:8000",
+    "prompt": "",
+    "roles": [],
+    "Enter2Send": true,
+    "options": {
+        "temperature": 0.7,
+        "top_p": 0.85,
+        "top_k": 40,
+        "num_ctx": 4096,
+        "num_predict": -1
+    },
+    "api": {
+        "baseURL": "",
+        "endpoint": "/v1/chat/completions",
+        "key": "",
+        "model": "",
+        "stream": true,
+        "timeout": 120
+    },
+    "local": {
+        "host": "http://127.0.0.1:11434",
+        "stream": true
+    },
+    "history": {
+        "enabled": true,
+        "file": "./data/chat_history.json"
+    },
+    "memory": {
+        "enabled": true,
+        "file": "./data/user.md",
+        "include_in_prompt": true,
+        "max_source_chars": 50000
+    },
+    "tools": {
+        "enabled": true,
+        "workspace": "./workspace",
+        "restrict_to_workspace": true,
+        "max_steps": 8,
+        "max_read_bytes": 200000,
+        "overwrite_on_create": false,
+        "allow_delete_dirs": false,
+        "ops": {
+            "list": {
+                "enabled": true,
+                "confirm": false
+            },
+            "read": {
+                "enabled": true,
+                "confirm": false
+            },
+            "create": {
+                "enabled": true,
+                "confirm": true
+            },
+            "edit": {
+                "enabled": true,
+                "confirm": true
+            },
+            "delete": {
+                "enabled": false,
+                "confirm": true
+            },
+            "shell": {
+                "enabled": false,
+                "confirm": true
+            }
+        },
+        "shell": {
+            "timeout": 30,
+            "max_output": 8000,
+            "blocked": [
+                "rm -rf /",
+                "format ",
+                "del /s",
+                "rmdir /s",
+                "shutdown",
+                "mkfs",
+                ":(){"
+            ],
+            "allow_only": []
+        }
+    }
+}

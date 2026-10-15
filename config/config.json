@@ -1,0 +1,126 @@
+{
+    "debug": false,
+    "serverURL": "http://127.0.0.1:11434",
+    "prompt": "",
+    "roles": [],
+    "rules_folder": "./rules",
+    "active_role": "",
+    "backend": "local",
+    "kind": "stream",
+    "Enter2Send": true,
+    "options": {
+        "temperature": 0.7,
+        "top_p": 0.9,
+        "top_k": 40,
+        "num_ctx": 4096,
+        "num_predict": -1
+    },
+    "api": {
+        "baseURL": "",
+        "endpoint": "/v1/chat/completions",
+        "key": "",
+        "model": "",
+        "timeout": 120
+    },
+    "local": {
+        "host": "http://127.0.0.1:11434"
+    },
+    "generate": {
+        "stream": true,
+        "system": "You are a writing and coding assistant. For writing tasks, produce the complete text (article, essay, document) directly. For coding tasks, produce complete, working code in fenced code blocks with brief comments. No unnecessary preamble or follow-up questions."
+    },
+    "history": {
+        "enabled": true,
+        "file": "./data/chat_history.json"
+    },
+    "memory": {
+        "enabled": true,
+        "file": "./data/user.md",
+        "include_in_prompt": true,
+        "max_source_chars": 50000
+    },
+    "tools": {
+        "enabled": true,
+        "workspace": "./workspace",
+        "restrict_to_workspace": true,
+        "max_steps": 8,
+        "max_read_bytes": 200000,
+        "overwrite_on_create": false,
+        "allow_delete_dirs": false,
+        "ops": {
+            "list": {
+                "enabled": true,
+                "confirm": false
+            },
+            "read": {
+                "enabled": true,
+                "confirm": false
+            },
+            "create": {
+                "enabled": true,
+                "confirm": true
+            },
+            "edit": {
+                "enabled": true,
+                "confirm": true
+            },
+            "delete": {
+                "enabled": false,
+                "confirm": true
+            },
+            "shell": {
+                "enabled": false,
+                "confirm": true
+            },
+            "web_search": {
+                "enabled": true,
+                "confirm": false
+            },
+            "web_fetch": {
+                "enabled": true,
+                "confirm": false
+            },
+            "image": {
+                "enabled": true,
+                "confirm": false
+            }
+        },
+        "shell": {
+            "timeout": 30,
+            "max_output": 8000,
+            "blocked": [
+                "rm -rf /",
+                "format",
+                "del /s",
+                "rmdir /s",
+                "shutdown",
+                "mkfs",
+                ":(){"
+            ],
+            "allow_only": []
+        }
+    },
+    "web": {
+        "provider": "duckduckgo",
+        "searxng_url": "",
+        "max_results": 5,
+        "timeout": 15,
+        "max_chars": 8000,
+        "max_bytes": 1500000,
+        "block_private": true,
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64) FeimAI/1.0"
+    },
+    "image": {
+        "provider": "a1111",
+        "baseURL": "http://127.0.0.1:7860",
+        "endpoint": "",
+        "key": "",
+        "model": "",
+        "size": "512x512",
+        "steps": 25,
+        "cfg_scale": 7,
+        "negative_prompt": "",
+        "timeout": 600,
+        "output_folder": "images"
+    }
+}
