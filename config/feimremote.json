@@ -1,0 +1,19 @@
+{
+  "enabled": false,
+  "model": "",
+  "max_tool_steps": 4,
+  "users": {},
+  "tool_permissions": {
+    "list": false,
+    "read": false,
+    "create": false,
+    "edit": false,
+    "delete": false,
+    "shell": false,
+    "web_search": false,
+    "web_fetch": false,
+    "image": false
+  },
+  "history_file": "./data/feimremote_history.json",
+  "max_history_messages": 40
+}

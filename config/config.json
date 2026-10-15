@@ -5,7 +5,7 @@
     "roles": [],
     "rules_folder": "./rules",
     "active_role": "",
-    "backend": "local",
+    "backend": "api",
     "kind": "stream",
     "Enter2Send": true,
     "options": {
@@ -16,11 +16,16 @@
         "num_predict": -1
     },
     "api": {
-        "baseURL": "",
+        "baseURL": "https://models-rotary-renewal-travelers.trycloudflare.com/",
         "endpoint": "/v1/chat/completions",
         "key": "",
         "model": "",
         "timeout": 120
+    },
+    "server": {
+        "ollama_keep_alive": "10m",
+        "stream_flush_interval_ms": 20,
+        "stream_flush_chars": 256
     },
     "local": {
         "host": "http://127.0.0.1:11434"
@@ -38,6 +43,13 @@
         "file": "./data/user.md",
         "include_in_prompt": true,
         "max_source_chars": 50000
+    },
+    "modules": {
+        "enabled": true,
+        "directory": "./Module",
+        "plugins": {
+            "current_time": false
+        }
     },
     "tools": {
         "enabled": true,

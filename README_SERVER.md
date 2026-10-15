@@ -201,6 +201,22 @@ print(result["choices"][0]["message"]["content"])
 }
 ```
 
+FeimAI keeps one Ollama client open to reuse its HTTP connection pool. It also
+coalesces small text chunks before writing SSE events, reducing per-token
+flush overhead while bounding the extra wait. These options are read from
+`config/config.json` when the server starts:
+
+| Setting | Default | Purpose |
+|---|---:|---|
+| `server.ollama_keep_alive` | `10m` | Keep the model loaded in Ollama after a request. Use an empty value for Ollama's default. |
+| `server.stream_flush_interval_ms` | `20` | Maximum time to buffer a partial text event before flushing. |
+| `server.stream_flush_chars` | `256` | Flush when buffered text reaches this many characters. |
+
+Edit the `server` object in the `config/config.json` used by the API server,
+then restart the server. The FeimAI Settings controls write to the local
+client's config; they affect a server only when it reads the same config file.
+For a Colab-hosted server, update the config copy on Colab.
+
 ## ส่งภาพให้โมเดลที่รองรับ vision
 
 ส่งภาพเป็น base64 data URL ใน `messages[].content` ตามรูปแบบ OpenAI-compatible
@@ -247,6 +263,69 @@ server รับเฉพาะภาพแบบ base64 data URL ไม่ด�
 **server จะไม่รัน file, shell หรือ web tools แทน client** ในแอป FeimAI
 การจัดการ tool และการถามยืนยันยังเกิดที่ FeimAI client ตามการตั้งค่าใน
 Settings ผู้ใช้ API client อื่นต้องจัดการ tool calls/ผลลัพธ์ต่อเอง
+
+FeimAI also supports local Python tool modules. Put `.py` files directly in
+the configured `Module` folder (default `./Module`) and enable the module in
+**Settings > Tools**. A module exports a `TOOLS` list containing OpenAI-style
+tool descriptions (`name`, `description`, and object `parameters`) and a
+`run(tool_name, arguments, context)` function. Its public tool name is prefixed
+with the module filename, e.g. `current_time__get_current_time`. `context`
+provides the workspace and module-folder paths. Modules are disabled by
+default and run locally in the FeimAI client with the user's full permissions;
+they are not sandboxed. Only enable code you trust.
+
+The chat sidebar supports deleting one saved conversation or clearing all
+history, with confirmation. **Settings > Memory & History** also provides
+direct editing and confirmed deletion of the configured Markdown user-memory
+file, in addition to chat summarization.
+
+## FeimRemote: access the Host from another device
+
+FeimRemote serves an authenticated chat page at `/remote` on the same FeimAI
+API port. It reuses the server's existing Ollama client and loaded model; it
+does not start a second model process. Typed requests and optional browser
+speech recognition both go to that Host. Speech recognition is provided by
+the browser's Web Speech API, so browser support and language availability
+vary.
+
+1. On the Host, open FeimAI **Settings > FeimRemote**.
+2. Add an account with a username and a password of at least 12 characters.
+   Passwords are stored as salted PBKDF2 hashes in `config/feimremote.json`.
+3. Set per-operation Host tool permissions. All accounts share these Host
+   permissions. Shell is off by default and grants powerful access if enabled.
+4. Enable FeimRemote, save Settings, and restart `server.py`.
+5. Keep FeimAI bound to loopback and expose it through a trusted HTTPS tunnel
+   (or another HTTPS reverse proxy). Do not expose this HTTP server directly to
+   the internet. Open `https://<your-tunnel>/remote` on the client device.
+
+Each successful sign-in receives a random, expiring bearer token. Login is
+rate-limited, tokens are held in memory and invalidated when the server
+restarts, and chat history is stored separately per username in
+`data/feimremote_history.json`. The web page stores its token in tab-scoped
+session storage and offers sign-out and per-account history clearing.
+
+For the interactive CLI client, run on a machine with this project installed:
+
+```powershell
+.\feimremote.bat --url https://<your-tunnel>
+```
+
+Or send one prompt and exit:
+
+```powershell
+.\feimremote.bat --url https://<your-tunnel> --username <account> --message "สวัสดี"
+```
+
+The CLI prompts for the password; do not pass credentials as command-line
+arguments. Use `python -m FeimRemote.cli` with `PYTHONPATH=src` on systems
+without the batch launcher.
+
+`config/feimremote.json` is independent from the FeimAI config. Settings in
+the desktop application update the local copy only. For a server hosted on
+Colab, transfer the FeimRemote config (which contains password hashes and
+permissions) to the Colab project securely, then restart the server there.
+Keep that file private. The server itself does not provide TLS; HTTPS must be
+terminated by the tunnel/proxy. FeimRemote is disabled by default.
 
 ## การตั้งค่าและไฟล์
 

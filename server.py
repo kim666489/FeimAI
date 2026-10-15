@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +24,9 @@ if str(SRC) not in sys.path:
 
 import ollama
 from FeimUI import DEFAULT_CONFIG, ImageGen, deepMerge
+from FeimRemote.auth import TokenStore
+from FeimRemote.config import load_remote_config
+from FeimRemote.service import handle_delete, handle_get, handle_post
 
 LOG = logging.getLogger("feimai.server")
 MAX_BODY_BYTES = 32 * 1024 * 1024
@@ -214,6 +218,13 @@ class FeimAIHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path.rstrip("/") or "/"
+        try:
+            if handle_get(self, path):
+                return
+        except Exception as exc:
+            LOG.exception("FeimRemote GET failed")
+            self._send_json(500, _openai_error(str(exc), "server_error", "remote_error"))
+            return
         if path == "/health":
             self._send_json(200, {"status": "ok", "backend": "ollama"})
             return
@@ -223,7 +234,7 @@ class FeimAIHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         try:
-            models = ollama.Client(host=self.cfg["local"]["host"]).list()
+            models = self.server.ollama_client.list()  # type: ignore[attr-defined]
             data = []
             for model in _value(models, "models", []) or []:
                 name = _value(model, "model") or _value(model, "name")
@@ -238,6 +249,14 @@ class FeimAIHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path.rstrip("/")
+        if path.startswith("/remote/api/"):
+            try:
+                if handle_post(self, path):
+                    return
+            except Exception as exc:
+                LOG.exception("FeimRemote request failed")
+                self._send_json(500, _openai_error(str(exc), "server_error", "remote_error"))
+                return
         if path not in {"/v1/chat/completions", "/v1/images/generations"}:
             self._send_json(404, _openai_error("Not found", code="not_found"))
             return
@@ -257,6 +276,17 @@ class FeimAIHandler(BaseHTTPRequestHandler):
             LOG.exception("API request failed")
             self._send_json(502, _openai_error(str(exc), "server_error", "backend_error"))
 
+    def do_DELETE(self) -> None:
+        path = urlparse(self.path).path.rstrip("/")
+        try:
+            if handle_delete(self, path):
+                return
+        except Exception as exc:
+            LOG.exception("FeimRemote DELETE failed")
+            self._send_json(500, _openai_error(str(exc), "server_error", "remote_error"))
+            return
+        self._send_json(404, _openai_error("Not found", code="not_found"))
+
     def _chat_completion(self, payload: dict[str, Any]) -> None:
         model = payload.get("model")
         if not isinstance(model, str) or not model.strip():
@@ -272,12 +302,14 @@ class FeimAIHandler(BaseHTTPRequestHandler):
             if tools is not None and not isinstance(tools, list):
                 raise ValueError("tools must be an array")
         options = _model_options(payload)
-        client = ollama.Client(host=self.cfg["local"]["host"])
         kwargs: dict[str, Any] = {"model": model, "messages": messages,
                                   "stream": stream, "options": options}
+        keep_alive = self.cfg.get("server", {}).get("ollama_keep_alive", "")
+        if keep_alive:
+            kwargs["keep_alive"] = keep_alive
         if tools:
             kwargs["tools"] = tools
-        result = client.chat(**kwargs)
+        result = self.server.ollama_client.chat(**kwargs)  # type: ignore[attr-defined]
         if stream:
             self._stream_chat(result, model)
         else:
@@ -314,6 +346,7 @@ class FeimAIHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
         self.send_header("Connection", "close")
         self.end_headers()
         self.close_connection = True
@@ -323,33 +356,75 @@ class FeimAIHandler(BaseHTTPRequestHandler):
             self.wfile.write(("data: " + encoded + "\n\n").encode("utf-8"))
             self.wfile.flush()
 
+        stream_cfg = self.cfg.get("server", {})
+        flush_interval = max(0, int(stream_cfg.get("stream_flush_interval_ms", 20))) / 1000
+        flush_chars = max(1, int(stream_cfg.get("stream_flush_chars", 256)))
+        pending_content = ""
+        last_flush = time.monotonic()
         has_tool_calls = False
+        calls_by_index: dict[int, dict[str, Any]] = {}
+
+        def flush_content(force: bool = False) -> None:
+            nonlocal pending_content, last_flush
+            elapsed = time.monotonic() - last_flush
+            if pending_content and (force or len(pending_content) >= flush_chars
+                                    or elapsed >= flush_interval):
+                write_event({
+                    "id": completion_id, "object": "chat.completion.chunk",
+                    "created": created, "model": model,
+                    "choices": [{"index": 0, "delta": {"content": pending_content},
+                                 "finish_reason": None}],
+                })
+                pending_content = ""
+                last_flush = time.monotonic()
+
+        def merge_arguments(target: dict[str, Any], updates: dict[str, Any]) -> None:
+            for key, value in updates.items():
+                if isinstance(value, dict) and isinstance(target.get(key), dict):
+                    merge_arguments(target[key], value)
+                else:
+                    target[key] = value
+
         try:
             for part in result:
                 message = _value(part, "message", {}) or {}
                 content = _value(message, "content", "") or ""
                 if content:
-                    write_event({
-                        "id": completion_id, "object": "chat.completion.chunk",
-                        "created": created, "model": model,
-                        "choices": [{"index": 0, "delta": {"content": content},
-                                     "finish_reason": None}],
-                    })
-                calls = _tool_calls(message)
-                if calls:
+                    pending_content += content
+                    flush_content()
+                for index, call in enumerate(_tool_calls(message)):
                     has_tool_calls = True
-                    fragments = []
-                    for index, call in enumerate(calls):
-                        fragments.append({
-                            "index": index, "id": call["id"], "type": "function",
-                            "function": call["function"],
-                        })
-                    write_event({
-                        "id": completion_id, "object": "chat.completion.chunk",
-                        "created": created, "model": model,
-                        "choices": [{"index": 0, "delta": {"tool_calls": fragments},
-                                     "finish_reason": None}],
+                    function = call["function"]
+                    current = calls_by_index.setdefault(index, {
+                        "id": call["id"],
+                        "name": function["name"],
+                        "arguments": {},
                     })
+                    current["name"] = function["name"] or current["name"]
+                    try:
+                        arguments = json.loads(function["arguments"])
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    if isinstance(arguments, dict):
+                        merge_arguments(current["arguments"], arguments)
+
+            flush_content(force=True)
+            if calls_by_index:
+                fragments = [{
+                    "index": index,
+                    "id": call["id"],
+                    "type": "function",
+                    "function": {
+                        "name": call["name"],
+                        "arguments": json.dumps(call["arguments"], ensure_ascii=False),
+                    },
+                } for index, call in sorted(calls_by_index.items())]
+                write_event({
+                    "id": completion_id, "object": "chat.completion.chunk",
+                    "created": created, "model": model,
+                    "choices": [{"index": 0, "delta": {"tool_calls": fragments},
+                                 "finish_reason": None}],
+                })
             write_event({
                 "id": completion_id, "object": "chat.completion.chunk",
                 "created": created, "model": model,
@@ -398,6 +473,22 @@ class FeimAIServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], config: dict[str, Any]):
         super().__init__(address, FeimAIHandler)
         self.feimai_config = config
+        self.ollama_client = ollama.Client(host=config["local"]["host"])
+        remote_path = ROOT / "config" / "feimremote.json"
+        self.remote_config = load_remote_config(remote_path)
+        self.remote_tokens = TokenStore(self.remote_config.get("users", {}))
+        self.remote_history = None
+        self.remote_history_lock = threading.RLock()
+        self.remote_user_locks: dict[str, threading.Lock] = {}
+        self.remote_user_locks_lock = threading.Lock()
+        if self.remote_config["enabled"] and not self.remote_config["users"]:
+            LOG.warning("FeimRemote is enabled but no users are configured")
+
+    def server_close(self) -> None:
+        try:
+            self.ollama_client.close()
+        finally:
+            super().server_close()
 
 
 def main() -> None:
@@ -416,6 +507,10 @@ def main() -> None:
     server = FeimAIServer((host, port), config)
     LOG.info("FeimAI API listening on http://%s:%s", host, port)
     LOG.info("Ollama host: %s", config["local"]["host"])
+    if server.remote_config["enabled"]:
+        LOG.info("FeimRemote enabled at http://%s:%s/remote",
+                 host, port)
+        LOG.info("Use HTTPS at the tunnel/proxy; the FeimAI server itself is HTTP")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
